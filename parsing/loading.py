@@ -1,52 +1,60 @@
+import graph_tool.all as graph_tool
 import csv
-import graph_tool
-from graph_tool.all import *
+from typing import *
 
+def load_csv_graph(path: str, edge_indices: tuple[int, int] = (0, 1), titles: list[str] = None) -> graph_tool.Graph:
+    """Loads a graph from a provided CSV file.
 
-def load_csv_graph(path: str, label: str) -> graph_tool.Graph:
-    """Loads a graph from a provided CSV file, using the provided label.
+    This function reads a CSV file representing a graph, extracts edges based on 
+    the specified column indices, and loads them into a `graph_tool.Graph` object.
 
     Args:
-        path (str): CSV file representing a graph
-        label (str): Primary property, such as coding language, to add as a property
+        path (str): CSV file representing a graph.
+        edge_indices (tuple[int, int]): Column indices corresponding to the source 
+            and target vertices of each edge. Edge properties for these columns are
+            not generated. Defaults to (0, 1).
+        titles (list[str], optional): List of column names to be used as edge 
+            property names. If None, the first row of the CSV is assumed to contain
+            column titles.
 
     Returns:
-        graph_tool.Graph: Loaded Graph
+        graph_tool.Graph: Loaded Graph.
+        graph_toool.VertexPropertyMap: Loaded vertex property map.
     """
+    new_graph = graph_tool.Graph()
     edge_list = []
     with open(path, newline="") as csvfile:
-        csv_reader = csv.reader(csvfile, delimiter=" ", quotechar="|")
-        titles = None
-        for row in csv_reader:
-            if titles is None:
-                titles = row
-            else:
-                edge_list.append((row[1], row[2]))
+        csv_reader = csv.reader(csvfile, delimiter=",", quotechar='"')
+        if titles is None: titles = next(csv_reader)
+        for line in csv_reader:
+                props = [prop for idx, prop in enumerate(line) if idx not in edge_indices]
+                v1 = line[edge_indices[0]]
+                v2 = line[edge_indices[1]]
+                edge = (v1, v2, *props)
+                edge_list.append(edge)
+    
+    titles = [title for idx, title in enumerate(titles) if idx not in edge_indices]
+    eprops = [new_graph.new_ep("string") for _ in titles]
+    for eprop, title in zip(eprops, titles):
+        new_graph.ep[title] = eprop
 
-    new_graph = graph_tool.Graph()
-    new_graph.add_edge_list(edge_list, hashed=True)
-
-    vlabel = new_graph.new_vertex_property("string")
-    for v in new_graph.vertices():
-        vlabel[v] = label
-
-    new_graph.vertex_properties["language"] = vlabel
-    return new_graph
+    vp = new_graph.add_edge_list(edge_list, eprops=eprops, hashed=True)
+    return new_graph, vp
 
 
-def combine_graphs(graphs: list) -> Graph:
+def combine_graphs(graphs: list[graph_tool.Graph]) -> graph_tool.Graph:
     """Combines several graphs into a single one.
 
     Args:
-        graphs (list): List of graphs
+        graphs (list[graph_tool.Graph]): List of graphs
 
     Returns:
-        Graph: Combined graph
+        graph_tool.Graph: Combined graph
     """
     if not graphs:
-        return Graph()
+        return graph_tool.Graph()
 
-    combined = Graph(directed=graphs[0].is_directed())
+    combined = graph_tool.Graph(directed=graphs[0].is_directed())
 
     # Collect all unique vertex property names and their types
     prop_types = {}
@@ -88,45 +96,53 @@ def combine_graphs(graphs: list) -> Graph:
     return combined
 
 
-print("Starting initial loading...")
-assembly_graph = load_csv_graph(
-    "developers_social_network/ASSEMBLY_developers_social_network.csv", "Assembly"
-)
-print("Starting initial loading...")
-js_graph = load_csv_graph(
-    "developers_social_network/JAVASCRIPT_developers_social_network.csv", "JS"
-)
-print("Starting initial loading...")
-pascal_graph = load_csv_graph(
-    "developers_social_network/PASCAL_developers_social_network.csv", "Pascal"
-)
-print("Starting initial loading...")
-perl_graph = load_csv_graph(
-    "developers_social_network/PERL_developers_social_network.csv", "Perl"
-)
-print("Starting initial loading...")
-python_graph = load_csv_graph(
-    "developers_social_network/PYTHON_developers_social_network.csv", "Python"
-)
-print("Starting initial loading...")
-ruby_graph = load_csv_graph(
-    "developers_social_network/RUBY_developers_social_network.csv", "Ruby"
-)
-print("Starting initial loading...")
-visual_basic_graph = load_csv_graph(
-    "developers_social_network/VISUALBASIC_developers_social_network.csv", "Basic"
-)
-print("Starting initial loading...")
+if __name__ == "__main__":
+    print("Starting initial loading...")
+    assembly_graph, assembly_vp = load_csv_graph(
+        "developers_social_network/ASSEMBLY_developers_social_network.csv", (1, 2)
+    )
+    assembly_graph.ep["language"] = assembly_graph.new_ep("string", val="Assembly")
+    print("Starting initial loading...")
+    js_graph, js_vp = load_csv_graph(
+        "developers_social_network/JAVASCRIPT_developers_social_network.csv", (1, 2)
+    )
+    js_graph.ep["language"] = js_graph.new_ep("string", val="JS")
+    print("Starting initial loading...")
+    pascal_graph, pascal_vp = load_csv_graph(
+        "developers_social_network/PASCAL_developers_social_network.csv", (1, 2)
+    )
+    pascal_graph.ep["language"] = pascal_graph.new_ep("string", val="Pascal")
+    print("Starting initial loading...")
+    perl_graph, perl_vp = load_csv_graph(
+        "developers_social_network/PERL_developers_social_network.csv", (1, 2)
+    )
+    perl_graph.ep["language"] = perl_graph.new_ep("string", val="Perl")
+    print("Starting initial loading...")
+    python_graph, python_vp = load_csv_graph(
+        "developers_social_network/PYTHON_developers_social_network.csv", (1, 2)
+    )
+    python_graph.ep["language"] = python_graph.new_ep("string", val="Python")
+    print("Starting initial loading...")
+    ruby_graph, ruby_vp = load_csv_graph(
+        "developers_social_network/RUBY_developers_social_network.csv", (1, 2)
+    )
+    ruby_graph.ep["language"] = assembly_graph.new_ep("string", val="Ruby")
+    print("Starting initial loading...")
+    visual_basic_graph, visual_basic_vp = load_csv_graph(
+        "developers_social_network/VISUALBASIC_developers_social_network.csv", "Basic"
+    )
+    visual_basic_graph.ep["language"] = visual_basic_graph.new_ep("string", "Basic")
+    print("Starting initial loading...")
 
-print("Starting Combination...")
-graph_list = [assembly_graph, js_graph, pascal_graph, perl_graph, python_graph, ruby_graph, visual_basic_graph]
-combined = combine_graphs(graph_list)
+    print("Starting Combination...")
+    graph_list = [assembly_graph, js_graph, pascal_graph, perl_graph, python_graph, ruby_graph, visual_basic_graph]
+    combined = combine_graphs(graph_list)
 
-print("Starting drawing process...")
-graph_draw(
-    combined,
-    vertex_text=combined.vertex_properties["language"],
-    output_size=(10000, 10000),
-    edge_pen_width=1.2,
-    output="graph_output.png",
-)
+    print("Starting drawing process...")
+    graph_tool.graph_draw(
+        combined,
+        # vertex_text=combined.vertex_properties["language"],
+        output_size=(10000, 10000),
+        edge_pen_width=1.2,
+        output="graph_output.png",
+    )
