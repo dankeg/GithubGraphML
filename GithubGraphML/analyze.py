@@ -71,11 +71,20 @@ if __name__ == "__main__":
     # analyze_langauge_distribution(combined)
 
     print("Starting Community Analysis...")
-    state = graph_tool.minimize_blockmodel_dl(combined)
-    with open('simple_state.pkl', 'wb') as f:
-                print("Caching Analysis...")
-                pickle.dump(state, f)
+    with graph_tool.openmp_context(nthreads=16, schedule="guided"):
+        state = graph_tool.minimize_blockmodel_dl(combined)
+        with open('simple_state.pkl', 'wb') as f:
+                    print("Caching Analysis...")
+                    pickle.dump(state, f)
 
+    with graph_tool.openmp_context(nthreads=16, schedule="guided"):
+        state = graph_tool.minimize_blockmodel_dl(combined, state_args=dict(
+                recs=[combined.ep['number_commits'].t(lambda n: int(n), value_type='int')],
+                rec_types=["discrete-poisson"]    
+        ))
+        with open('weighted_state.pkl', 'wb') as f:
+                    print("Caching Analysis...")
+                    pickle.dump(state, f)
 
     # print("Starting drawing process...")
     # positions = graph_tool.sfdp_layout(combined, p=3, r=0.5, cooling_step=0.995, max_iter=200)
