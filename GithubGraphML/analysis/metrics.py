@@ -1,9 +1,10 @@
 from graph_tool import Graph
 
-
-def analyze_multi_language_nodes(graph: Graph) -> dict:
+def analyze_node_languages(graph: Graph) -> dict:
     """
-    Analyzes the given graph and identifies nodes associated with multiple languages.
+    Analyzes the given graph and identifies the languages nodes are associated with 
+    (defined by the value of an edge's 'language' property). Assumes the graph is
+    undirected.
 
     Args:
         graph (Graph): The graph-tool graph object to analyze.
@@ -12,14 +13,20 @@ def analyze_multi_language_nodes(graph: Graph) -> dict:
         dict: A dictionary mapping node IDs to lists of languages for nodes
               associated with two or more languages.
     """
-    multi_lang_nodes = {}
-    id_prop = graph.vertex_properties["id"]
-    lang_prop = graph.vertex_properties["language"]
+    lang_prop = graph.ep['language']
+    id_prop = graph.vp['id']
+    lang_dict = dict()
 
-    for v in graph.vertices():
-        languages = lang_prop[v]
-        if len(languages) >= 2:
-            node_id = id_prop[v]
-            multi_lang_nodes[node_id] = languages
+    for edge in graph.edges():
+        lang = lang_prop[edge]
+        v1 = id_prop[edge.source()]
+        v2 = id_prop[edge.target()]
+        if v1 not in lang_dict:
+            lang_dict[v1] = set()
+        if v2 not in lang_dict:
+            lang_dict[v2] = set()
 
-    return multi_lang_nodes
+        lang_dict[v1].add(lang)
+        lang_dict[v2].add(lang)
+ 
+    return {k: tuple(v) for k, v in lang_dict.items()}
