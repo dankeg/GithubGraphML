@@ -1,8 +1,8 @@
 import graph_tool.all as graph_tool
 from typing import *
 
-from parsing.loading import load_csv_graph, combine_graphs 
-from analysis.metrics import analyze_node_languages
+from GithubGraphML.analysis.metrics import analyze_node_languages
+from GithubGraphML.parsing.loading import combine_graphs, load_csv_graph
 import matplotlib.pyplot as plt
 import pickle
 import os
