@@ -67,33 +67,106 @@ if __name__ == "__main__":
             with open(combined_pickle, 'wb') as f:
                 pickle.dump(combined, f)
 
-    print("Performing Analysis...")
+    # print("Performing Analysis...")
     # analyze_langauge_distribution(combined)
 
-    print("Starting Community Analysis...")
-    with graph_tool.openmp_context(nthreads=16, schedule="guided"):
-        state = graph_tool.minimize_blockmodel_dl(combined)
-        with open('simple_state.pkl', 'wb') as f:
-                    print("Caching Analysis...")
-                    pickle.dump(state, f)
+    with open('simple_state.pkl', 'rb') as f:
+        print("loading state...")
+        state = pickle.load(f)
+        
+        g = combined
+        del combined
 
-    with graph_tool.openmp_context(nthreads=16, schedule="guided"):
-        state = graph_tool.minimize_blockmodel_dl(combined, state_args=dict(
-                recs=[combined.ep['number_commits'].t(lambda n: int(n), value_type='int')],
-                rec_types=["discrete-poisson"]    
-        ))
-        with open('weighted_state.pkl', 'wb') as f:
-                    print("Caching Analysis...")
-                    pickle.dump(state, f)
+        # Get block assignments (which vertices belong to which block)
+        blocks = state.b
+        
+        # Create a new graph where blocks are aggregated
+        coarse_g = graph_tool.Graph()
 
+        # Create a new vertex property to represent the block assignments
+        block_property = coarse_g.new_vertex_property("int")
+        block_edge_counts = {}
+        block_vertex_count = {}
+        block_to_vertex = {}
+
+        # Iterate over the original graph to aggregate nodes and count edges between blocks
+        print("aggregating graph...")
+        # Iterate over the original graph to aggregate nodes and count edges between blocks
+        for v in g.vertices():
+            block = blocks[v]  # Get block for each vertex
+            if block not in block_to_vertex:
+                # Create a super-node for each block
+                new_vertex = coarse_g.add_vertex()
+                block_to_vertex[block] = new_vertex
+                block_property[new_vertex] = block
+                block_vertex_count[block] = 1  # Initialize the count
+            else:
+                block_vertex_count[block] += 1
+            
+            # Now count edges between blocks
+            for e in v.out_edges():
+                neighbor_block = blocks[e.target()]
+                if block != neighbor_block:  # Only count edges between different blocks
+                    block_pair = tuple(sorted([block, neighbor_block]))
+                    if block_pair not in block_edge_counts:
+                        block_edge_counts[block_pair] = 1
+                    else:
+                        block_edge_counts[block_pair] += 1
+
+        # Create edges in the coarse graph based on block adjacency
+        for (block1, block2), edge_count in block_edge_counts.items():
+            v1 = block_to_vertex[block1]
+            v2 = block_to_vertex[block2]
+            coarse_g.add_edge(v1, v2)
+
+        # Now you have a coarse graph, where the vertices represent blocks
+        # and the edges represent the connections between those blocks.
+
+        # Increase vertex size according to block size (number of vertices in each block)
+        vertex_size = coarse_g.new_vertex_property("int")
+        for v in coarse_g.vertices():
+            block = block_property[v]
+            vertex_size[v] = block_vertex_count[block]  # Scale size by block size
+
+        # Set edge thickness (pen width) proportional to the number of edges between blocks
+        edge_thickness = coarse_g.new_edge_property("float")
+        for e in coarse_g.edges():
+            block1 = block_property[e.source()]
+            block2 = block_property[e.target()]
+            block_pair = tuple(sorted([block1, block2]))
+            edge_thickness[e] = block_edge_counts[block_pair] * 0.01  # Scale edge thickness
+
+        # Plot the coarse graph with edge thickness
+        graph_tool.graph_draw(coarse_g, 
+                      vertex_color=block_property, 
+                      output_size=(1024, 1024), 
+                      vertex_size=vertex_size, 
+                      edge_pen_width=edge_thickness,
+                      output="coarse_community.png")
+
+    # with graph_tool.openmp_context(nthreads=16, schedule="guided"):
+    #     state = graph_tool.minimize_blockmodel_dl(combined)
+    #     with open('nested_state.pkl', 'wb') as f:
+    #                 print("Caching Analysis...")
+    #                 pickle.dump(state, f)
+    #                 del state
+    
+    # with graph_tool.openmp_context(nthreads=16, schedule="guided"):
+    #     state = graph_tool.minimize_nested_blockmodel_dl(combined)
+    #     with open('nested_state.pkl', 'wb') as f:
+    #                 print("Caching Analysis...")
+    #                 pickle.dump(state, f)
+    #                 del state
+    
     # print("Starting drawing process...")
     # positions = graph_tool.sfdp_layout(combined, p=3, r=0.5, cooling_step=0.995, max_iter=200)
     # graph_tool.graph_draw(
     #     combined,
+    #     pos = graph_tool.sfdp_layout(combined, max_itter=20),
     #     vertex_text=combined.vp['id'],
     #     pos = positions,
-    #     output_size=(10000, 10000),
-    #     output='complete_graph.svg',
+    #     output_size=(1000, 1000),
+    #     output='complete_graph.png',
     #     fmt='svg',
     #     edge_pen_width=1.2,
     # )
