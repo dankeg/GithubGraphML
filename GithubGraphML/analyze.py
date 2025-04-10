@@ -1,8 +1,8 @@
 import graph_tool.all as graph_tool
 from typing import *
 
-from GithubGraphML.analysis.metrics import analyze_node_languages
-from GithubGraphML.parsing.loading import combine_graphs, load_csv_graph
+from analysis.metrics import analyze_node_languages, classic_metrics
+from parsing.loading import combine_graphs, load_csv_graph, load_csv_vertices, transform_bipartite
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -17,7 +17,7 @@ cache_combined = True
 use_cached_community = True
 cache_community = True
 
-data_dir = './'
+data_dir = './data'
 
 def load_networks(languages=['Assembly', 'Javascript', 'Pascal', 'Perl', 'Python', 'Ruby', 'VisualBasic'], vprop_name='name'):
     developers_social_networks = []
@@ -70,12 +70,43 @@ if __name__ == "__main__":
             combined = pickle.load(f)
             combined.set_directed(False)
 
+    # print('loading developers...')
+    # with open('developers.pkl', 'rb') as f:
+    #     developers = pickle.load(f)
+
+    # print('recombining graph...')
+    # with open('developer_combined', 'wb') as f:
+    #     developer_combined = combine_graphs(combined, developers)
+    #     pickle.dump(developer_combined, f)
+    
+    # classic_metrics(combined, 'combined_dd.png')    
+    
+    # vertcies, vp = load_csv_vertices(f"{data_dir}/developer.csv", vprop_name='id')
+    # with open('developers.pkl', 'wb') as f:
+    #     pickle.dump(vertcies, f)
+    #     print(vertcies)
+
+    # print("Loading cached repositories...")
+    # with open('repositories.pkl', 'rb') as f:
+    #     repositories = pickle.load(f)
+        
+    # print("transforming_graph...")
+    # transform_bipartite(combined, repositories, 'repository_id')
+    # del repositories
+    # print("dumping bipartite...")
+    # with open('bipartite.pkl', 'wb') as f:
+    #     pickle.dump(combined, f)
+    
+    # with open('bipartite.pkl', 'rb') as f:
+    #     bipartite = pickle.load(f)
+
+    # print(bipartite)
 
     # print("Performing Analysis...")
     # analyze_langauge_distribution(combined)
 
     # if not os.path.exists('simple_state.pkl') or not use_cached_community:
-    #     with graph_tool.openmp_context(nthreads=16, schedule="guided"):
+    #     with graph_tool.openmp_context(nthreads=4, schedule="guided"):
     #         print("Starting simple community analysis...")
     #         state = graph_tool.minimize_blockmodel_dl(combined)
     #     if cache_community:
@@ -83,19 +114,21 @@ if __name__ == "__main__":
     #                     print("Caching analysis...")
     #                     pickle.dump(state, f)
     # else:
-    #     with open('simple_state.pkl', 'rb') as f:
-    #         print("Loading state...")
-    #         state = pickle.load(f)
+    # with open('simple_state.pkl', 'rb') as f:
+    #     print("Loading state...")
+    #     state = pickle.load(f)
 
-    
-    # with graph_tool.openmp_context(nthreads=16, schedule="guided"):
+    # state.draw(output='community.png', max_iter=1000)
+
+    # with graph_tool.openmp_context(nthreads=4, schedule="guided"):
     #     state = graph_tool.minimize_nested_blockmodel_dl(combined)
     #     with open('nested_state.pkl', 'wb') as f:
     #                 print("Caching Analysis...")
     #                 pickle.dump(state, f)
     #                 del state
 
-    # TODO: import repositories.csv and create bipartide with all language graphs + combined graph
+    # TODO: import repositories.csv and create bipartite with all language graphs + combined graph
+    # TODO: merge parallel edges together in output of bipartite graph generation
     # TODO: import developer.csv as node vectors
     # TODO: analyze all language graphs + combined graph basic network stats
     #  - degree distribution
@@ -105,4 +138,4 @@ if __name__ == "__main__":
     #  - betweeness centrality
     #  - ??modularity??
     
-    # attempt aggregate-grained modeling to simplify combined graph structure?
+    # attempt coarse-grained modeling to simplify combined graph structure?
