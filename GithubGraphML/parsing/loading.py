@@ -1,5 +1,7 @@
+from collections import defaultdict
 from graph_tool.all import *
 from typing import *
+
 import csv
 
 def load_csv_graph(path: str, edge_indices: tuple[int, int] = (0, 1), titles: list[str] = None, vprop_name: str = 'name') -> tuple[Graph, VertexPropertyMap]:
@@ -88,7 +90,7 @@ def combine_graphs(graphs: list[Graph], vprop_name: str = 'name') -> tuple[Graph
     combined = Graph(len(vertices))
     combined.set_directed(graphs[0].is_directed())
 
-    nvprop = combined.new_vp('string', vals=vertices)
+    nvprop = combined.new_vp(vprops[0].value_type(), vals=vertices)
     nvprop_map = {}
     for i, prop in enumerate(nvprop):
         nvprop_map[prop] = i
@@ -125,7 +127,7 @@ def transform_bipartite(graph: Graph, vertices: Graph, prop_name: str) -> None:
     All uneffected are edges are removed.
     """
     vprop_map = {vertices.vp[prop_name][v]: v for v in vertices.vertices()}
-    bipartite = graph.new_vp('int')
+    bipartite = graph.new_vp('bool', val=False)
     graph.vp['bipartite'] = bipartite
     vmap = {}
 
@@ -138,7 +140,7 @@ def transform_bipartite(graph: Graph, vertices: Graph, prop_name: str) -> None:
             vv_prop = vertices.vp[key][vv]
             graph.vp[key][vg] = vv_prop
             vmap[vv] = vg
-        bipartite[vg] = 1
+        bipartite[vg] = True
 
     # modify edges
     for e in graph.get_edges():
@@ -151,3 +153,39 @@ def transform_bipartite(graph: Graph, vertices: Graph, prop_name: str) -> None:
                 eprop = graph.ep[key][e]
                 graph.ep[key][ne] = eprop
         graph.remove_edge(tuple(e))
+
+def merge_parallel(graph: Graph, eprops: list[VertexPropertyMap]) -> None:
+    # Assumes eprops are numeric
+    def get_parallel_edges(g):
+        edge_dict = defaultdict(list)
+        for e in g.edges():
+            key = tuple(sorted((int(e.source()), int(e.target()))))
+            edge_dict[key].append(e)
+
+        parallel_edges = {k: v for k, v in edge_dict.items() if len(v) > 1}
+        return parallel_edges
+
+    parallel_edges = get_parallel_edges(graph)
+    merged = graph.new_ep('bool', val=True)
+    graph.ep['merged'] = merged
+    for edge, edges in parallel_edges.items():
+        edge = graph.add_edge(*edge)
+        for eprop in eprops:
+            merged[edges[0]] = False
+            prop = eprop[edges[0]]
+            for e in edges[1:]:
+                prop += eprop[e]
+                merged[e] = False
+            eprop[edge] = prop
+        
+        merged[edge] = True
+
+    graph.set_edge_filter(merged)
+
+def prune(graph: Graph) -> VertexPropertyMap:
+    has_neighbors = graph.new_vp('bool')
+    for v in graph.vertices():
+        has_neighbors[v] = v.in_degree() + v.out_degree() > 0
+
+    graph.vp['has_neighbors'] = has_neighbors
+    graph.set_vertex_filter(has_neighbors)
