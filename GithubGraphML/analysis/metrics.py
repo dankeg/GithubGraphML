@@ -45,10 +45,10 @@ def classic_metrics(graph: Graph, ddplot='degree_distribution.png') -> dict:
     metrics = {
         'num_vertices': n,
         'num_edges': m,
-        'avg_degree': k,
-        'clustering_coefficent': cc,
+        'avg_degree': k.item(),
+        'clustering_coefficent': cc.item(),
         'avg_shortest_path': d,
-        'betweenness_centrality': bc,
+        'betweenness_centrality': bc.item(),
     }
 
     if not None:
