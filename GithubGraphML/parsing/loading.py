@@ -3,6 +3,7 @@ from datetime import datetime
 from graph_tool.all import *
 from typing import *
 
+import numpy as np
 import csv
 import pickle
 import os
@@ -181,7 +182,7 @@ def merge_parallel(graph: Graph, eprops: list[VertexPropertyMap]) -> None:
                 prop += eprop[e]
                 merged[e] = False
             eprop[edge] = prop
-        
+
         merged[edge] = True
 
     graph.set_edge_filter(merged)
@@ -225,7 +226,7 @@ def load_repositories(data_dir, cache='repositories.pkl', use_cached = True, cac
         repositories.vp['number_commits'] = repositories.vp['number_commits'].t(int, value_type='int')
         repositories.vp['number_commiters'] = repositories.vp['number_commiters'].t(int, value_type='int')
         repositories.vp['create_date'] = repositories.vp['create_date'].t(date2float, value_type='float')
-        repositories.vp['end_date'] = repositories.vp['create_date'].t(date2float, value_type='float')
+        repositories.vp['end_date'] = repositories.vp['end_date'].t(date2float, value_type='float')
         repositories.vp['repository_id'] = repositories.vp['repository_id'].t(int, value_type='int')
         repositories.shrink_to_fit()
         if cache_result:
@@ -310,14 +311,16 @@ def load_networks(data_dir, languages=['Assembly', 'Javascript', 'Pascal', 'Perl
                             graph_vp = graph.vp[key]
                             graph_vp[v] = dev_vp[dev_v]
                     except KeyError:
-                        print(f'missing developer: {dev_id}')
+                        print(f'Missing developer: {dev_id}')
                         continue
             graph.set_directed(False)
             graph.shrink_to_fit()
             if cache_result:
+                if verbose: print(f'Cached {language} network...')
                 with open(cache % language, 'wb') as f:
                     pickle.dump(graph, f)
         else:
+            if verbose: print(f'Loading cached {language} network...')
             with open(cache % language, 'rb') as f:
                 graph = pickle.load(f)
         developers_social_networks.append(graph)
