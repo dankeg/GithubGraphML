@@ -51,7 +51,7 @@ def classic_metrics(graph: Graph, ddplot='degree_distribution.png') -> dict:
         'betweenness_centrality': bc.item(),
     }
 
-    if not None:
+    if ddplot is not None:
         degrees, counts = np.unique(component.degree_property_map("total").a, return_counts=True)
         plt.scatter(degrees, counts, color='blue', label='Degree Distribution')
         plt.yscale('log')
@@ -62,5 +62,6 @@ def classic_metrics(graph: Graph, ddplot='degree_distribution.png') -> dict:
         plt.legend()
         plt.grid(True)
         plt.savefig(ddplot)
+        plt.clf()
     
     return metrics
