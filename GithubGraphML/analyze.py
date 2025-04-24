@@ -1,140 +1,149 @@
-import graph_tool.all as graph_tool
+from graph_tool.all import *
 from datetime import datetime
 from typing import *
 
-from analysis.metrics import analyze_node_languages, classic_metrics
+from analysis.metrics import language_usage, classic_metrics, community_metrics
+from visualization.language import language_usage_distribution
 from parsing.loading import *
 
 import matplotlib.pyplot as plt
+import plotly.express as px
+import pandas as pd
 import numpy as np
 import pickle
 import json
-import os
+import tqdm
 
 
-langauge_list = ['Assembly', 'JavaScript', 'Pascal', 'Perl', 'Python', 'VisualBasic']
+language_list = ['Assembly', 'JavaScript', 'Pascal', 'Perl', 'Python', 'VisualBasic']
 data_dir = './data'
 
-def draw_bipartite(bipartite, **kwargs):
-    coloring = bipartite.vp['programming_language_id'].t(lang_color.__getitem__, value_type='string')
-    graph_tool.graph_draw(
-        bipartite,
-        output_size=(10192, 10192), 
-        output='plotting/bipartite.png',
-        vertex_fill_color=coloring,
-        max_iter=1000,
-        **kwargs
-    )
-
-def draw_combined(combined, **kwargs):
-    coloring = combined.ep['programming_language_id'].t(lang_color.__getitem__, value_type='string')
-    graph_tool.graph_draw(
-        combined,
-        output_size=(10192, 10192),
-        output='plotting/combined.png',
-        edge_color=coloring,
-        max_iter=1000,
-        **kwargs,
-    )
+def process_language(lang):
+    with open(f'{lang}_simple_state.pkl', 'rb') as f:
+        state = pickle.load(f)
+    data = community_metrics(state, desc=f'community metrics: {lang}')
+    with open(f'{lang}_community_metrics.json', 'w') as f:
+        json.dump(data, f, indent=2)
 
 
-def analyze_langauge_distribution(combined):
-    # Count instances of user language usage combinations
-    results = analyze_node_languages(combined)
-    combined_list = []
-    for _, item in results.items():
-        combined_list.append(item)
-    data = Counter(combined_list)
-    print(data)
-
-    # Prepare labels and sizes for plotting
-    labels = ["+".join(k) for k in data.keys()]
-    sizes = list(data.values())
-
-    # Pie chart with matplotlib
-    _, ax = plt.subplots(figsize=(8, 8))
-    wedges, _ = ax.pie(sizes, startangle=140, wedgeprops=dict(width=0.5))
-
-    # Adding a legend with clear labels
-    ax.legend(wedges, labels, title='Language Combinations', loc='center left',
-            bbox_to_anchor=(1, 0, 0.5, 1))
-
-    ax.set_title('Distribution of Programming Language Combinations')
-    plt.tight_layout()
-    plt.show()
-
-
-# TODO: analyze all language graphs + combined graph basic network stats
-#  - degree distribution    
-#  - clustering coeffcient
-#  - average shortest path length
-#  - number of connected components
-#  - betweeness centrality
 if __name__ == '__main__':
-    networks = load_networks(data_dir, langauge_list)
-    for i, network in enumerate(networks):
-        print(f'Analyzing {langauge_list[i]} network...')
-        metrics = classic_metrics(network, ddplot=f'results/{langauge_list[i]}_degree_distribution.png')
-        with open(f'results/{langauge_list[i]}_metrics.txt', 'w') as f:
-            json.dump(metrics, f, indent=2)
-    del networks
+    pass
 
-    # for i, language in enumerate(langauge_list[1:]):
-    #     print(f'Loading {language} network...')
-    #     with open(f'{language}.pkl', 'rb') as f:
-    #         network = pickle.load(f)
-    #     for key in list(network.vp):
-    #         del network.vp[key]
-    #     for key in list(network.ep):
-    #         del network.ep[key]
-    #     print(f'Analyzing {language} network...')
-    #     metrics = classic_metrics(network, ddplot=f'results/{language}_degree_distribution.png')
-    #     with open(f'results/{language}_metrics.txt', 'w') as f:
-    #         json.dump(metrics, f, indent=2)
+    # with ProcessPoolExecutor() as executor:
+    #     executor.map(process_language, language_list)
+    # with open(f'combined_simple_state.pkl', 'rb') as f:
+    #     state = pickle.load(f)
+    # data = community_metrics(state, 8)
+    # with open(f'combined_community_metrics.json', 'w') as f:
+    #     json.dump(data, f, indent=2)
+    # for lang in ['JavaScript']:
+    #     with open(f'{lang}_simple_state.pkl', 'rb') as f:
+    #         state = pickle.load(f)
+    #     with open(f'results/{lang}_community_metrics.json', 'r') as f:
+    #         stats = json.load(f)
+    #         densities = []
+    #         max_f1s = []
+    #         sizes = []
+    #         for b, stat in stats.items():
+    #             max_f1s.append(max(stat['f1'].values()))
+    #             sizes.append(int(stat['size']))
+    #         stats = {
+    #             'avg_max_f1': np.mean(np.array(max_f1s)),
+    #             'avg_size': np.mean(np.array(sizes)),
+    #             'entropy': state.entropy(),
+    #         }
+    #         print(lang, stats)
+            
 
-    combined = load_combined(data_dir, langauge_list)
-    print('Analyzing combined network...')
-    classic_metrics(combined, ddplot='results/combined_degree_distribution.png')
-    draw_combined(combined, output='combined.svg', fmt='svg')
-    del combined
+    # networks = load_networks(data_dir, language_list)
+    # for lang, graph in zip(language_list, networks):
+    #     with openmp_context(nthreads=4, schedule='guided'):
+    #         print('Starting simple community analysis...')
+    #         state = minimize_blockmodel_dl(graph)
+    #         with open(f'{lang}_simple_state.pkl', 'wb') as f:
+    #             print('Caching simple analysis...')
+    #             pickle.dump(state, f)
+    #             del state
+    #     with openmp_context(nthreads=4, schedule='guided'):
+    #         print('Starting nested community analysis...')
+    #         state = minimize_nested_blockmodel_dl(graph)
+    #         with open(f'{lang}_nested_state.pkl', 'wb') as f:
+    #             print('Caching nested analysis...')
+    #             pickle.dump(state, f)
+    #             del state
+    #     with openmp_context(nthreads=16, schedule='guided'):
+    #         with open(f'{lang}_simple_state.pkl', 'rb') as f:
+    #             print('Loading simple community analysis...')
+    #             state = pickle.load(f)
+    #             print('Drawing simple community analysis...')
+    #             state.draw(output=f'results/{lang}_simple_community.png', output_size=(10192, 10192))
+    #             del state
+    #     with openmp_context(nthreads=16, schedule='guided'):
+    #         with open(f'{lang}_nested_state.pkl', 'rb') as f:
+    #             print('Loading nested community analysis...')
+    #             state = pickle.load(f)
+    #             if lang == 'JavaScript' or lang == 'Python':
+    #                 continue
+    #             print('Drawing nested community analysis...')
+    #             state.draw(output=f'results/{lang}_nested_community.png', output_size=(10192, 10192))
+    #             del state
 
-    bipartite = load_bipartite(data_dir, langauge_list)
-    draw_bipartite(bipartite, output='bipartite.svg', fmt='svg')
-    del bipartite
 
-    combined = load_combined(data_dir, langauge_list)
+    # networks = load_networks(data_dir, ["Assembly"])
+    # for language, network in zip(langauge_list, networks):
+    #     with open(f"results2/{language}_metrics.txt", 'w') as f:
+    #         json.dump(classic_metrics(network, 'results2/{language}'), f, indent=2)
+    # combined = load_combined(data_dir, langauge_list)
+    # with open(f"results2/combined_metrics.txt", 'w') as f:
+    #     json.dump(classic_metrics(combined, 'results2/combined'), f, indent=2)
+    # combined = load_combined(data_dir, langauge_list)
+    # language_usage_distribution(language_usage(combined), output='language_distribution.png')
 
-    with graph_tool.openmp_context(nthreads=4, schedule='guided'):
-        print('Starting simple community analysis...')
-        state = graph_tool.minimize_blockmodel_dl(combined)
-        with open('simple_state.pkl', 'wb') as f:
-            print('Caching simple analysis...')
-            pickle.dump(state, f)
-            del state
 
-    with graph_tool.openmp_context(nthreads=4, schedule='guided'):
-        print('Starting nested community analysis...')
-        state = graph_tool.minimize_nested_blockmodel_dl(combined)
-        with open('nested_state.pkl', 'wb') as f:
-            print('Caching nested analysis...')
-            pickle.dump(state, f)
-            del state
+
+
+
+
+
+
+    # bipartite = load_bipartite(data_dir, langauge_list)
+    # print('Drawing bipartite network...')
+    # draw_bipartite(bipartite)
+
+    # combined = load_combined(data_dir, langauge_list)
+
+    # combined = load_combined(data_dir, langauge_list)
+    # with openmp_context(nthreads=4, schedule='guided'):
+    #     print('Starting simple community analysis...')
+    #     state = minimize_blockmodel_dl(combined)
+    #     with open('simple_state.pkl', 'wb') as f:
+    #         print('Caching simple analysis...')
+    #         pickle.dump(state, f)
+    #         del state
+
+    # with openmp_context(nthreads=4, schedule='guided'):
+    #     print('Starting nested community analysis...')
+    #     state = minimize_nested_blockmodel_dl(combined)
+    #     with open('nested_state.pkl', 'wb') as f:
+    #         print('Caching nested analysis...')
+    #         pickle.dump(state, f)
+    #         del state
     
-    with graph_tool.openmp_context(nthreads=4, schedule='guided'):
-        with open('simple_state.pkl', 'rb') as f:
-            print('Loading simple community analysis...')
-            state = pickle.load(f)
-            print('Drawing simple community analysis...')
-            state.draw(output='simple_community.svg', fmt='svg')
-            del state
+    # with openmp_context(nthreads=16, schedule='guided'):
+    #     with open('simple_state.pkl', 'rb') as f:
+    #         print('Loading simple community analysis...')
+    #         state = pickle.load(f)
+    #         print('Drawing simple community analysis...')
+    #         state.draw(output='simple_community.png', output_size=(10192, 10192))
+    #         del state
     
-    with graph_tool.openmp_context(nthreads=4, schedule='guided'):
-        with open('nested_state.pkl', 'rb') as f:
-            print('Loading nested community analysis...')
-            state = pickle.load(f)
-            print('Drawing nested community analysis...')
-            state.draw(output='nested_community.svg', fmt='svg')
-            del state
+    # with openmp_context(nthreads=16, schedule='guided'):
+    #     with open('nested_state.pkl', 'rb') as f:
+    #         print('Loading nested community analysis...')
+    #         state = pickle.load(f)
+    #         print('Drawing nested community analysis...')
+    #         state.draw(output='nested_community.png', output_size=(10192, 10192))
+    #         del state
 
     # del combined
     # bipartite = load_bipartite(langauge_list)

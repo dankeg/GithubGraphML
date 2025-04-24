@@ -144,7 +144,8 @@ def transform_bipartite(graph: Graph, vertices: Graph, prop_name: str) -> None:
     for vv, vg in zip(vertices.vertices(), graph.add_vertex(vertices.num_vertices())):
         for key in vertices.vp:
             if key not in graph.vp:
-                new_vp = graph.new_vp('string')
+                value_type = vertices.vp[key].value_type()
+                new_vp = graph.new_vp(value_type)
                 graph.vp[key] = new_vp
             vv_prop = vertices.vp[key][vv]
             graph.vp[key][vg] = vv_prop
@@ -152,6 +153,7 @@ def transform_bipartite(graph: Graph, vertices: Graph, prop_name: str) -> None:
         bipartite[vg] = True
 
     # modify edges
+    graph.set_fast_edge_removal(True)
     for e in graph.get_edges():
         prop = graph.ep[prop_name][e]
         vv = vprop_map[prop]
@@ -162,9 +164,10 @@ def transform_bipartite(graph: Graph, vertices: Graph, prop_name: str) -> None:
                 eprop = graph.ep[key][e]
                 graph.ep[key][ne] = eprop
         graph.remove_edge(tuple(e))
+    graph.set_fast_edge_removal(False)
 
 def merge_parallel(graph: Graph, eprops: list[VertexPropertyMap]) -> None:
-    # Assumes eprops are numeric
+    # Assumes eprops are numeric & graph is undirected
     def get_parallel_edges(g):
         edge_dict = defaultdict(list)
         for e in g.edges():
@@ -199,17 +202,8 @@ def prune(graph: Graph) -> VertexPropertyMap:
     graph.vp['has_neighbors'] = has_neighbors
     graph.set_vertex_filter(has_neighbors)
 
+
 date2float = lambda date: datetime.strptime(date, "%Y-%m-%d %H:%M:%S").timestamp()
-lang_color = {
-    -1: '#A9A9A9',       # User - Grey
-    0:  '#FF5733',       # Assembly - strong orange-red
-    1:  '#F1C40F',       # JavaScript - vibrant yellow
-    2:  '#8E44AD',       # Pascal - deep purple
-    3:  '#1ABC9C',       # Perl - teal
-    4:  '#3498DB',       # Python - blue
-    5:  '#E74C3C',       # Ruby - ruby red
-    6:  '#2ECC71',       # VisualBasic - green
-}
 lang_map = {
     '': -1,
     'Assembly': 0,
@@ -220,6 +214,7 @@ lang_map = {
     'Ruby': 5,
     'VisualBasic': 6,
 }
+
 
 def load_repositories(data_dir, cache='repositories.pkl', use_cached = True, cache_result = True, verbose = True):
     if not os.path.exists(cache) or not use_cached:
@@ -247,19 +242,22 @@ def load_developers(data_dir, cache='developers.pkl', use_cached=True, cache_res
     if not os.path.exists(cache) or not use_cached:
         if verbose: print('Loading developers...')
         developers, _ = load_csv_vertices(f'{data_dir}/developer.csv', vprop_name='developer_id')
-        def transform(date):  # format different & defect in dataset
+        def timestamp(date):  # format different & defect in dataset
             if date == ',2012-05-0': date = '2012-05-01'
             date = datetime.strptime(date, "%Y-%m-%d")
             return date.timestamp()
-        developers.vp['created_at'] = developers.vp['created_at'].t(transform, value_type='float')
-        developers.vp['fake'] = developers.vp['fake'].t(bool, value_type='bool')
-        developers.vp['deleted'] = developers.vp['deleted'].t(bool, value_type='bool')
+        def loc(loc):
+            if loc: return float(loc)
+            else: return 0.0
+        developers.vp['created_at'] = developers.vp['created_at'].t(timestamp, value_type='float')
+        developers.vp['fake'] = developers.vp['fake'].t(int, value_type='bool')
+        developers.vp['deleted'] = developers.vp['deleted'].t(int, value_type='bool')
         developers.vp['developer_id'] = developers.vp['developer_id'].t(int, value_type='int')
         developers.vp['is_org'] = developers.vp['usr_type'].t(lambda type: type == 'ORG', value_type='bool')
+        developers.vp['long'] = developers.vp['long'].t(loc, value_type='float')
+        developers.vp['lat'] = developers.vp['lat'].t(loc, value_type='float')
         del developers.vp['company']
         del developers.vp['usr_type']
-        del developers.vp['long']
-        del developers.vp['lat']
         del developers.vp['country_code']
         del developers.vp['location']
         del developers.vp['state']
@@ -275,7 +273,7 @@ def load_developers(data_dir, cache='developers.pkl', use_cached=True, cache_res
             developers = pickle.load(f)
     return developers
 
-def load_networks(data_dir, languages=['Assembly', 'Javascript', 'Pascal', 'Perl', 'Python', 'Ruby', 'VisualBasic'], enhance=True, cache='%s.pkl', use_cache=True, cache_result=True, developers_cache='developers.pkl', verbose=True):
+def load_networks(data_dir, languages=['Assembly', 'JavaScript', 'Pascal', 'Perl', 'Python', 'Ruby', 'VisualBasic'], enhance=True, cache='%s.pkl', use_cache=True, cache_result=True, developers_cache='developers.pkl', verbose=True):
     if enhance: 
         if developers_cache is not None: developers = load_developers(data_dir, cache=developers_cache, verbose=verbose)
         else: developers = load_developers(data_dir, use_cached=False, cache_result=False, verbose=verbose)
