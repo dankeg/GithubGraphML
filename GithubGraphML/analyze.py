@@ -37,6 +37,7 @@ def draw_combined(combined, **kwargs):
         **kwargs,
     )
 
+
 def analyze_langauge_distribution(combined):
     # Count instances of user language usage combinations
     results = analyze_node_languages(combined)
@@ -47,7 +48,7 @@ def analyze_langauge_distribution(combined):
     print(data)
 
     # Prepare labels and sizes for plotting
-    labels = ['+'.join(k) for k in data.keys()]
+    labels = ["+".join(k) for k in data.keys()]
     sizes = list(data.values())
 
     # Pie chart with matplotlib

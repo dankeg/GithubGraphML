@@ -2,9 +2,10 @@ from graph_tool.all import *
 import matplotlib.pyplot as plt
 import numpy as np
 
+
 def analyze_node_languages(graph: Graph) -> dict:
     """
-    Analyzes the given graph and identifies the languages nodes are associated with 
+    Analyzes the given graph and identifies the languages nodes are associated with
     (defined by the value of an edge's 'language' property). Assumes the graph is
     undirected.
 
@@ -15,8 +16,8 @@ def analyze_node_languages(graph: Graph) -> dict:
         dict: A dictionary mapping node IDs to lists of languages for nodes
               associated with two or more languages.
     """
-    lang_prop = graph.ep['language']
-    id_prop = graph.vp['id']
+    lang_prop = graph.ep["language"]
+    id_prop = graph.vp["id"]
     lang_dict = dict()
 
     for edge in graph.edges():
@@ -30,7 +31,7 @@ def analyze_node_languages(graph: Graph) -> dict:
 
         lang_dict[v1].add(lang)
         lang_dict[v2].add(lang)
- 
+
     return {k: tuple(v) for k, v in lang_dict.items()}
 
 

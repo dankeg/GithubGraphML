@@ -17,10 +17,10 @@ def load_csv_graph(path: str, edge_indices: tuple[int, int] = (0, 1), titles: li
 
     Args:
         path (str): CSV file representing a graph.
-        edge_indices (tuple[int, int]): Column indices corresponding to the source 
+        edge_indices (tuple[int, int]): Column indices corresponding to the source
             and target vertices of each edge. Edge properties for these columns are
             not generated. Defaults to (0, 1).
-        titles (list[str], optional): List of column names to be used as edge 
+        titles (list[str], optional): List of column names to be used as edge
             property names. If None, the first row of the CSV is assumed to contain
             column titles.
         vprop_name str: Name to give loaded vertex property map. Defaults to 'name'.
@@ -101,7 +101,9 @@ def combine_graphs(graphs: list[Graph], vprop_name: str = 'name') -> tuple[Graph
         nvprop_map[prop] = i
 
     for g, vprop in zip(graphs, vprops):
-        for v, *vprops in zip(g.vertices(), *[[(key, prop) for prop in g.vp[key]] for key in g.vp]):
+        for v, *vprops in zip(
+            g.vertices(), *[[(key, prop) for prop in g.vp[key]] for key in g.vp]
+        ):
             for key, prop in vprops:
                 if key not in combined.vp:
                     val_type = g.vp[key].value_type()
@@ -110,7 +112,9 @@ def combine_graphs(graphs: list[Graph], vprop_name: str = 'name') -> tuple[Graph
                 idx = nvprop_map[vprop[v]]
                 combined.vp[key][idx] = prop
 
-        for (v1, v2), *eprops in zip(g.edges(), *[[(key, prop) for prop in g.ep[key]] for key in g.ep]):
+        for (v1, v2), *eprops in zip(
+            g.edges(), *[[(key, prop) for prop in g.ep[key]] for key in g.ep]
+        ):
             edge = nvprop_map[vprop[v1]], nvprop_map[vprop[v2]]
             e = combined.add_edge(*edge)
             for key, prop in eprops:
