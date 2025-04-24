@@ -35,7 +35,7 @@ def analyze_node_languages(graph: Graph) -> dict:
     return {k: tuple(v) for k, v in lang_dict.items()}
 
 
-def classic_metrics(graph: Graph, ddplot='degree_distribution.png') -> dict:
+def classic_metrics(graph: Graph, ddplot='plotting/degree_distribution.png') -> dict:
     component = extract_largest_component(graph)
     n = component.num_vertices()
     m = component.num_edges()

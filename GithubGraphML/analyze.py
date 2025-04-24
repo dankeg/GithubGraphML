@@ -20,7 +20,7 @@ def draw_bipartite(bipartite, **kwargs):
     graph_tool.graph_draw(
         bipartite,
         output_size=(10192, 10192), 
-        output='bipartite.png',
+        output='plotting/bipartite.png',
         vertex_fill_color=coloring,
         max_iter=1000,
         **kwargs
@@ -31,7 +31,7 @@ def draw_combined(combined, **kwargs):
     graph_tool.graph_draw(
         combined,
         output_size=(10192, 10192),
-        output='combined.png',
+        output='plotting/combined.png',
         edge_color=coloring,
         max_iter=1000,
         **kwargs,

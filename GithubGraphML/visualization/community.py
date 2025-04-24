@@ -96,7 +96,7 @@ def coarse_blockstate(g: Graph, state: BlockState, **kwargs) -> Graph:
         edge_color=coarse_g.ep['color'],
         eorder=coarse_g.ep['order'],
         output_size=(5096, 5096), 
-        output='coarse_output.png',
+        output='plotting/coarse_output.png',
         **kwargs
     )
 

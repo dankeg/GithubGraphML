@@ -347,7 +347,7 @@ def main() -> None:
     )
 
     # Plot results
-    plot_metrics(history, Path("training_metrics.png"))
+    plot_metrics(history, Path("plotting/training_metrics.png"))
 
 
 if __name__ == "__main__":

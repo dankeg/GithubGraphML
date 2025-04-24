@@ -271,7 +271,7 @@ def plot_bipartite_metrics(history: Dict[str, List[float]]) -> None:
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
     plt.legend()
-    plt.savefig("bip_train_loss.png")
+    plt.savefig("plotting/bip_train_loss.png")
     plt.close()
 
     plt.figure()
@@ -282,7 +282,7 @@ def plot_bipartite_metrics(history: Dict[str, List[float]]) -> None:
     plt.xlabel("Epoch")
     plt.ylabel("Score")
     plt.legend()
-    plt.savefig("bip_train_metrics.png")
+    plt.savefig("plotting/bip_train_metrics.png")
     plt.close()
 
 
