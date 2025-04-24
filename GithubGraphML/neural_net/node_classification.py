@@ -1,278 +1,354 @@
-import os
 import pickle
+import time
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
 import torch
 import torch.nn.functional as F
+import networkx as nx
+import matplotlib.pyplot as plt
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from torch_geometric.data import Data
 from torch_geometric.nn import GCNConv
-from torch_geometric.utils import to_undirected
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-import matplotlib.pyplot as plt
 
 from GithubGraphML.analyze import load_networks
 from GithubGraphML.parsing.loading import combine_graphs
 
-# Split constants
-DATA_FRACTION = 0.5    # Fraction of nodes from the entire graph to use
-TRAIN_FRACTION = 0.8   # Fraction of selected nodes that go to training
+# Configuration constants
+DATA_FRACTION: float = 1
+TRAIN_FRACTION: float = 0.8
+MODEL_PATH: Path = Path("gnn_model.pth")
+CACHE_PATH: Path = Path("combined.pkl")
 
-def load_combined_graph(language_list, pickle_filename, use_cached=True, cache_combined=True):
-    """Load combined graph from pickle or create it from individual networks."""
-    if os.path.exists(pickle_filename) and use_cached:
-        print("Loading cached combination...")
-        with open(pickle_filename, 'rb') as f:
-            combined = pickle.load(f)
-            combined.set_directed(False)
+
+def save_model(model: torch.nn.Module, path: Path) -> None:
+    """
+    Save the model's state dictionary to disk.
+
+    Args:
+        model: The PyTorch model to save.
+        path: File system path where the state dict will be written.
+    """
+    torch.save(model.state_dict(), path)
+
+
+def load_model(
+    model: torch.nn.Module, path: Path, device: Optional[torch.device] = None
+) -> torch.nn.Module:
+    """
+    Load a state dictionary from disk into the given model.
+
+    Args:
+        model: An uninitialized or existing PyTorch model instance.
+        path: File system path to load the state dict from.
+        device: Optional torch.device for map_location. Defaults to CPU if None.
+
+    Returns:
+        The model with loaded parameters.
+    """
+    state = torch.load(path, map_location=device)
+    model.load_state_dict(state)
+    return model
+
+
+def load_graph(
+    languages: List[str], cache_path: Path, use_cache: bool = True, cache: bool = True
+) -> Any:
+    """
+    Load or combine multiple language graphs into an undirected graph.
+
+    Args:
+        languages: Sequence of language names to include.
+        cache_path: Path to a pickle file for caching the combined graph.
+        use_cache: If True and cache_path exists, load from cache.
+        cache: If True, write a new combined graph to cache_path.
+
+    Returns:
+        A graph object with directedness set to False.
+    """
+    if use_cache and cache_path.exists():
+        with cache_path.open("rb") as f:
+            graph = pickle.load(f)
     else:
-        print("Combining graphs...")
-        graph_list = load_networks(language_list, vprop_name='id')
-        combined, _ = combine_graphs(graph_list, vprop_name='id')
-        combined.set_directed(False)
-        if cache_combined:
-            print("Caching combined graph...")
-            with open(pickle_filename, 'wb') as f:
-                pickle.dump(combined, f)
-    print("Graph properties:", combined.list_properties())
-    edge = next(combined.edges())
+        graphs = load_networks(languages, vprop_name="id")
+        graph, _ = combine_graphs(graphs, vprop_name="id")
+        if cache:
+            cache_path.parent.mkdir(exist_ok=True)
+            with cache_path.open("wb") as f:
+                pickle.dump(graph, f)
+    graph.set_directed(False)
+    return graph
 
-    # Print a header indicating which edge we are inspecting
-    print(f"Inspecting edge from {int(edge.source())} to {int(edge.target())}:\n")
 
-    # Loop over all edge properties and print their values for this edge
-    for prop_name in combined.ep.keys():
-        value = combined.ep[prop_name][edge]
-        print(f"{prop_name}: {value}")
+def extract_labels(graph: Any, language_list: List[str]) -> torch.Tensor:
+    """
+    Construct multi-hot labels for each node based on edge 'language'.
 
-    return combined
+    Args:
+        graph: Graph object with edge property 'language'.
+        language_list: Ordered list of language names mapping to vector indices.
 
-def extract_node_labels(graph, language_list):
-    """Extract multi-label vectors based on edge 'language' property."""
+    Returns:
+        A tensor of shape (num_nodes, num_languages) with 0/1 entries.
+    """
     num_nodes = graph.num_vertices()
-    lang_prop = graph.ep['language']
-    node_languages = {int(v): set() for v in graph.vertices()}
+    lang_to_idx = {lang: i for i, lang in enumerate(language_list)}
+    labels = torch.zeros((num_nodes, len(language_list)), dtype=torch.float)
     for e in graph.edges():
-        lang_val = lang_prop[e]
-        src = int(e.source())
-        tgt = int(e.target())
-        node_languages[src].add(lang_val)
-        node_languages[tgt].add(lang_val)
-    language_to_idx = {lang: i for i, lang in enumerate(language_list)}
-    num_languages = len(language_list)
-    labels_list = []
-    for i in range(num_nodes):
-        vec = [0] * num_languages
-        for lang in node_languages[i]:
-            if lang in language_to_idx:
-                vec[language_to_idx[lang]] = 1
-        labels_list.append(vec)
-    labels_tensor = torch.tensor(labels_list, dtype=torch.float)
-    return labels_tensor, num_nodes
+        lang = graph.ep["language"][e]
+        idx = lang_to_idx.get(lang)
+        if idx is not None:
+            s, t = int(e.source()), int(e.target())
+            labels[s, idx] = 1.0
+            labels[t, idx] = 1.0
+    return labels
 
-def build_edge_index(graph):
-    """Create edge_index tensor from the graph-tools graph (undirected)."""
-    edge_list = []
-    for e in graph.edges():
-        src = int(e.source())
-        tgt = int(e.target())
-        edge_list.append([src, tgt])
-        edge_list.append([tgt, src])
-    edge_index = torch.tensor(edge_list, dtype=torch.long).t().contiguous()
-    return edge_index
 
-def build_data_object(x, edge_index, y):
-    """Build PyTorch Geometric Data object."""
-    return Data(x=x, edge_index=edge_index, y=y)
-
-def split_data(data, data_fraction, train_fraction):
-    """Split nodes into training and evaluation sets based on given fractions."""
-    N = data.num_nodes
-    selected_count = int(data_fraction * N)
-    perm = torch.randperm(N)
-    selected_indices = perm[:selected_count]
-    train_count = int(train_fraction * selected_count)
-    train_indices = selected_indices[:train_count]
-    eval_indices = selected_indices[train_count:]
-    train_mask = torch.zeros(N, dtype=torch.bool)
-    eval_mask = torch.zeros(N, dtype=torch.bool)
-    train_mask[train_indices] = True
-    eval_mask[eval_indices] = True
-    data.train_mask = train_mask
-    data.eval_mask = eval_mask
-    return data
-
-def build_node_features(graph, num_nodes):
+def build_node_features(graph: Any) -> torch.Tensor:
     """
-    Build node feature matrix including:
-      - a constant feature (1)
-      - sum of contribution_days (converted from string to float) across incident edges
-      - sum of number_commits (converted from string to float) across incident edges
+    Build node-level features: constant plus summed edge properties.
+
+    Args:
+        graph: Graph object with edge properties 'contribution_days' and 'number_commits'.
+
+    Returns:
+        A tensor of shape (num_nodes, 3) with columns [1, sum_days, sum_commits].
     """
-    # Constant feature: a column of ones.
-    constant_feature = torch.ones((num_nodes, 1), dtype=torch.float)
-    
-    # Initialize tensors for accumulating edge properties per node.
-    total_contribution_days = torch.zeros(num_nodes, dtype=torch.float)
-    total_commits = torch.zeros(num_nodes, dtype=torch.float)
-    
-    # Iterate over all edges in the graph.
+    n = graph.num_vertices()
+    feats = torch.ones((n, 3), dtype=torch.float)
     for e in graph.edges():
-        src = int(e.source())
-        tgt = int(e.target())
-        # Convert the string edge properties to float values.
-        cd_val = float(graph.ep['contribution_days'][e])
-        commit_val = float(graph.ep['number_commits'][e])
-        
-        # Since the graph is undirected, add to both endpoints.
-        total_contribution_days[src] += cd_val
-        total_contribution_days[tgt] += cd_val
-        total_commits[src] += commit_val
-        total_commits[tgt] += commit_val
-        
-    # Reshape the accumulated vectors into column tensors.
-    total_contribution_days = total_contribution_days.view(num_nodes, 1)
-    total_commits = total_commits.view(num_nodes, 1)
-    
-    # Concatenate the constant feature with the accumulated edge properties.
-    x = torch.cat([constant_feature, total_contribution_days, total_commits], dim=1)
-    return x
+        s, t = int(e.source()), int(e.target())
+        cd: float = float(graph.ep["contribution_days"][e])
+        cm: float = float(graph.ep["number_commits"][e])
+        feats[s, 1] += cd
+        feats[t, 1] += cd
+        feats[s, 2] += cm
+        feats[t, 2] += cm
+    return feats
 
-def create_model(num_features, num_languages, hidden_dim=4):
-    """Create a simple 2-layer GCN for multi-label classification."""
-    class GCN(torch.nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.conv1 = GCNConv(num_features, hidden_dim)
-            self.conv2 = GCNConv(hidden_dim, num_languages)
-        def forward(self, x, edge_index):
-            x = self.conv1(x, edge_index)
-            x = F.relu(x)
-            x = self.conv2(x, edge_index)
-            return x
-    return GCN()
 
-def train_model(model, data, num_epochs=100):
-    """Train model and log metrics."""
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+def build_edge_index(graph: Any) -> torch.Tensor:
+    """
+    Convert graph edges to PyG-style edge_index.
+
+    Args:
+        graph: Graph object with vertices and edges.
+
+    Returns:
+        A tensor of shape (2, num_edges*2) for bidirectional edges.
+    """
+    edges = [(int(e.source()), int(e.target())) for e in graph.edges()]
+    src, dst = zip(*edges)
+    return torch.tensor([src + dst, dst + src], dtype=torch.long)
+
+
+def split_masks(
+    num_nodes: int, data_frac: float, train_frac: float
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Generate boolean masks for train/eval splits.
+
+    Args:
+        num_nodes: Total number of nodes.
+        data_frac: Fraction of nodes to select.
+        train_frac: Fraction of selected nodes for training.
+
+    Returns:
+        A tuple (train_mask, eval_mask), each a boolean tensor.
+    """
+    perm = torch.randperm(num_nodes)
+    sel = perm[: int(data_frac * num_nodes)]
+    split = int(train_frac * len(sel))
+    train_idx, eval_idx = sel[:split], sel[split:]
+    train_mask = torch.zeros(num_nodes, dtype=torch.bool)
+    eval_mask = torch.zeros(num_nodes, dtype=torch.bool)
+    train_mask[train_idx] = True
+    eval_mask[eval_idx] = True
+    return train_mask, eval_mask
+
+
+class GCNModel(torch.nn.Module):
+    """
+    Two-layer GCN for multi-label node classification.
+    """
+
+    def __init__(self, in_dim: int, hidden_dim: int, out_dim: int) -> None:
+        """
+        Args:
+            in_dim: Number of input features per node.
+            hidden_dim: Hidden layer dimensionality.
+            out_dim: Number of output classes (multi-label).
+        """
+        super().__init__()
+        self.conv1 = GCNConv(in_dim, hidden_dim)
+        self.conv2 = GCNConv(hidden_dim, out_dim)
+
+    def forward(self, x: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass through two GCN layers.
+
+        Args:
+            x: Node feature matrix (num_nodes, in_dim).
+            edge_index: Edge index tensor (2, num_edges).
+
+        Returns:
+            Raw logits tensor of shape (num_nodes, out_dim).
+        """
+        h = F.relu(self.conv1(x, edge_index))
+        return self.conv2(h, edge_index)
+
+
+def train_model(
+    model: torch.nn.Module,
+    data: Data,
+    train_mask: torch.Tensor,
+    epochs: int = 100,
+    lr: float = 0.01,
+) -> Dict[str, List[float]]:
+    """
+    Train the GCN model and record metric history.
+
+    Args:
+        model: Initialized GCNModel.
+        data: PyG Data object with x, edge_index, y.
+        train_mask: Boolean mask for training nodes.
+        epochs: Number of training epochs.
+        lr: Learning rate for optimizer.
+
+    Returns:
+        Dictionary mapping metric names to lists of values per epoch.
+    """
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     loss_fn = torch.nn.BCEWithLogitsLoss()
-
-    losses = []
-    train_accuracies = []
-    train_precisions = []
-    train_recalls = []
-    train_f1s = []
-
+    history: Dict[str, List[float]] = {
+        k: [] for k in ["loss", "acc", "prec", "rec", "f1"]
+    }
     model.train()
-    for epoch in range(num_epochs):
+    for ep in range(1, epochs + 1):
         optimizer.zero_grad()
-        out = model(data.x, data.edge_index)
-        loss = loss_fn(out[data.train_mask], data.y[data.train_mask])
+        logits = model(data.x, data.edge_index)
+        loss = loss_fn(logits[train_mask], data.y[train_mask])
         loss.backward()
         optimizer.step()
 
-        # Evaluate on training set.
-        model.eval()
         with torch.no_grad():
-            out_eval = model(data.x, data.edge_index)
-            pred = (torch.sigmoid(out_eval) > 0.5).float()
-            y_train = data.y[data.train_mask].cpu().numpy().flatten()
-            pred_train = pred[data.train_mask].cpu().numpy().flatten()
-            acc = accuracy_score(y_train, pred_train)
-            prec = precision_score(y_train, pred_train, average='micro', zero_division=0)
-            rec = recall_score(y_train, pred_train, average='micro', zero_division=0)
-            f1_val = f1_score(y_train, pred_train, average='micro', zero_division=0)
-        losses.append(loss.item())
-        train_accuracies.append(acc)
-        train_precisions.append(prec)
-        train_recalls.append(rec)
-        train_f1s.append(f1_val)
+            pred = (torch.sigmoid(logits) > 0.5).float()
+            y_true = data.y[train_mask].cpu().numpy()
+            y_pred = pred[train_mask].cpu().numpy()
 
-        model.train()
-        if epoch % 10 == 0:
-            print(f"[Epoch {epoch}] Loss: {loss.item():.4f}, Train Acc: {acc:.4f}, "
-                  f"Prec: {prec:.4f}, Rec: {rec:.4f}, F1: {f1_val:.4f}")
-    metrics = {
-        'losses': losses,
-        'accuracies': train_accuracies,
-        'precisions': train_precisions,
-        'recalls': train_recalls,
-        'f1s': train_f1s
-    }
-    return metrics
+        history["loss"].append(loss.item())
+        history["acc"].append(accuracy_score(y_true, y_pred))
+        history["prec"].append(
+            precision_score(y_true, y_pred, average="macro", zero_division=0)
+        )
+        history["rec"].append(
+            recall_score(y_true, y_pred, average="macro", zero_division=0)
+        )
+        history["f1"].append(f1_score(y_true, y_pred, average="macro", zero_division=0))
 
-def plot_metrics(metrics, num_epochs, filename):
-    """Plot training loss and metrics and save the plot."""
-    epochs_range = range(num_epochs)
-    plt.figure(figsize=(12, 6))
+        if ep % 10 == 0:
+            print(
+                f"Epoch {ep}/{epochs} | Loss: {history['loss'][-1]:.4f} | F1: {history['f1'][-1]:.4f}"
+            )
+    return history
 
+
+def plot_metrics(history: Dict[str, List[float]], save_path: Path) -> None:
+    """
+    Plot training metrics over epochs and save the figure.
+
+    Args:
+        history: Metric history from train_model.
+        save_path: File path to write the plot image.
+    """
+    epochs = list(range(1, len(history["loss"]) + 1))
+    plt.figure(figsize=(12, 5))
     plt.subplot(1, 2, 1)
-    plt.plot(epochs_range, metrics['losses'], label='Loss', color='blue')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.title('Training Loss (Multi-label)')
+    plt.plot(epochs, history["loss"], label="Loss")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
     plt.legend()
-
     plt.subplot(1, 2, 2)
-    plt.plot(epochs_range, metrics['accuracies'], label='Accuracy')
-    plt.plot(epochs_range, metrics['precisions'], label='Precision')
-    plt.plot(epochs_range, metrics['recalls'], label='Recall')
-    plt.plot(epochs_range, metrics['f1s'], label='F1 Score')
-    plt.xlabel('Epoch')
-    plt.ylabel('Score')
-    plt.title('Training Metrics (Multi-label)')
+    for metric in ["acc", "prec", "rec", "f1"]:
+        plt.plot(epochs, history[metric], label=metric)
+    plt.xlabel("Epoch")
+    plt.ylabel("Score")
     plt.legend()
-
     plt.tight_layout()
-    plt.savefig(filename)
-    plt.show()
+    plt.savefig(save_path)
 
-def main():
-    language_list = ['Assembly', 'Javascript', 'Pascal', 'Perl', 'Python', 'VisualBasic']
-    combined_pickle = 'combined.pkl'
-    num_epochs = 50
 
-    # 1. Load/Combine the graph.
-    combined_graph = load_combined_graph(language_list, combined_pickle)
+def evaluate_model(
+    model: torch.nn.Module, data: Data, mask: torch.Tensor
+) -> Dict[str, float]:
+    """
+    Evaluate model performance on a given mask.
 
-    # 2. Extract multi-label node targets.
-    y, num_nodes = extract_node_labels(combined_graph, language_list)
-    print(f"Extracted labels shape: {y.shape}")
+    Args:
+        model: Trained GCNModel.
+        data: PyG Data containing features and labels.
+        mask: Boolean mask for test or eval nodes.
 
-    # 3. Build node features including constant, contribution_days, and number_commits.
-    x = build_node_features(combined_graph, num_nodes)
-    
-    # 4. Build edge_index tensor.
-    edge_index = build_edge_index(combined_graph)
-
-    # 5. Create the PyG data object.
-    data = build_data_object(x, edge_index, y)
-
-    # 6. Split nodes into training and evaluation sets.
-    data = split_data(data, DATA_FRACTION, TRAIN_FRACTION)
-    print(f"Training nodes: {data.train_mask.sum().item()} / {data.num_nodes}")
-    print(f"Eval nodes: {data.eval_mask.sum().item()} / {data.num_nodes}")
-
-    # 7. Create the model. Update input features from 1 to 3.
-    model = create_model(num_features=3, num_languages=len(language_list))
-
-    # 8. Train the model.
-    metrics = train_model(model, data, num_epochs=num_epochs)
-
-    # 9. Final evaluation on the evaluation set.
+    Returns:
+        Dictionary of evaluation metrics (acc, prec, rec, f1).
+    """
     model.eval()
     with torch.no_grad():
-        out = model(data.x, data.edge_index)
-        pred = (torch.sigmoid(out) > 0.5).float()
-        y_eval = data.y[data.eval_mask].cpu().numpy().flatten()
-        pred_eval = pred[data.eval_mask].cpu().numpy().flatten()
-        print(y_eval)
-        print(pred_eval)
-        eval_acc = accuracy_score(y_eval, pred_eval)
-        eval_prec = precision_score(y_eval, pred_eval, average='macro', zero_division=0)
-        eval_rec = recall_score(y_eval, pred_eval, average='macro', zero_division=0)
-        eval_f1 = f1_score(y_eval, pred_eval, average='macro', zero_division=0)
-    print(f"\n[Final Evaluation] Eval Acc: {eval_acc:.4f}, Prec: {eval_prec:.4f}, Rec: {eval_rec:.4f}, F1: {eval_f1:.4f}")
+        logits = model(data.x, data.edge_index)
+        pred = (torch.sigmoid(logits) > 0.5).float()
+        y_true = data.y[mask].cpu().numpy()
+        y_pred = pred[mask].cpu().numpy()
+    return {
+        "acc": accuracy_score(y_true, y_pred),
+        "prec": precision_score(y_true, y_pred, average="macro", zero_division=0),
+        "rec": recall_score(y_true, y_pred, average="macro", zero_division=0),
+        "f1": f1_score(y_true, y_pred, average="macro", zero_division=0),
+    }
 
-    # 10. Plot and save training metrics.
-    plot_metrics(metrics, num_epochs, 'multi_label_node_classification_metrics.png')
+
+def main() -> None:
+    """
+    Full pipeline: load data, train GCN, persist model, reload and evaluate.
+    """
+    # Data preparation
+    languages: List[str] = [
+        "Assembly",
+        "Javascript",
+        "Pascal",
+        "Perl",
+        "Python",
+        "VisualBasic",
+    ]
+    graph = load_graph(languages, CACHE_PATH)
+    data = Data(
+        x=build_node_features(graph),
+        edge_index=build_edge_index(graph),
+        y=extract_labels(graph, languages),
+    )
+    train_mask, eval_mask = split_masks(data.num_nodes, DATA_FRACTION, TRAIN_FRACTION)
+    data.train_mask, data.eval_mask = train_mask, eval_mask
+
+    # Model training
+    model = GCNModel(in_dim=data.x.size(1), hidden_dim=16, out_dim=len(languages))
+    history = train_model(model, data, train_mask)
+    print(f"Training complete. Saving model to {MODEL_PATH}")
+    save_model(model, MODEL_PATH)
+
+    # Model evaluation
+    loaded_model = GCNModel(
+        in_dim=data.x.size(1), hidden_dim=16, out_dim=len(languages)
+    )
+    load_model(loaded_model, MODEL_PATH, device=torch.device("cpu"))
+    print("Model reloaded for evaluation.")
+    metrics = evaluate_model(loaded_model, data, eval_mask)
+    print(
+        f"Eval | Acc: {metrics['acc']:.4f} | Prec: {metrics['prec']:.4f} |"
+        f" Rec: {metrics['rec']:.4f} | F1: {metrics['f1']:.4f}"
+    )
+
+    # Plot results
+    plot_metrics(history, Path("training_metrics.png"))
+
 
 if __name__ == "__main__":
     main()
