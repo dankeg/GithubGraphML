@@ -1,0 +1,22 @@
+{
+  "graph": {
+    "num_vertices": 41141,
+    "num_edges": 280291,
+    "avg_degree": 13.62587200116672,
+    "std_degree": 0.19874631457334452,
+    "global_clustering_coefficent": 0.4998106309237686,
+    "avg_local_clustering_coefficent": 0.66179010669521,
+    "avg_shortest_path": 1721491611.3477604,
+    "betweenness_centrality": 0.034822489473559814
+  },
+  "component": {
+    "num_vertices": 18316,
+    "num_edges": 224752,
+    "avg_degree": 24.541602970080802,
+    "std_degree": 0.40454710069321476,
+    "global_clustering_coefficent": 0.47106338334096454,
+    "avg_local_clustering_coefficent": 0.45767062876209097,
+    "avg_shortest_path": 5.319464275568229,
+    "betweenness_centrality": 0.1757064486760499
+  }
+}

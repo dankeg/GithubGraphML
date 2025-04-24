@@ -1,0 +1,18 @@
+{
+  "graph": {
+    "num_vertices": 1796692,
+    "num_edges": 15483836,
+    "avg_degree": 17.23593804614258,
+    "std_degree": 0.09484142464913467,
+    "global_clustering_coefficent": 0.41031714320241097,
+    "avg_local_clustering_coefficent": 0.6739240129039352
+  },
+  "component": {
+    "num_vertices": 874309,
+    "num_edges": 14534055,
+    "avg_degree": 33.24695273638954,
+    "std_degree": 0.19339615399486054,
+    "global_clustering_coefficent": 0.4102149215316102,
+    "avg_local_clustering_coefficent": 0.5418485211598536
+  }
+}
