@@ -190,7 +190,7 @@ def plot_train_metrics(history: Dict[str, List[float]]) -> None:
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
     plt.legend()
-    plt.savefig("plotting/train_loss.png")
+    plt.savefig("plotting/train_loss_edge.png")
     plt.close()
     plt.figure(figsize=(8, 6))
     plt.plot(epochs, history["acc"], label="Acc")
@@ -200,7 +200,7 @@ def plot_train_metrics(history: Dict[str, List[float]]) -> None:
     plt.xlabel("Epoch")
     plt.ylabel("Score")
     plt.legend()
-    plt.savefig("plotting/train_metrics.png")
+    plt.savefig("plotting/train_metrics_edge.png")
     plt.close()
 
 

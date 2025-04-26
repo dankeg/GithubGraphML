@@ -2,9 +2,11 @@ from graph_tool.all import *
 from datetime import datetime
 from typing import *
 
-from analysis.metrics import language_usage, classic_metrics, community_metrics
-from visualization.language import language_usage_distribution
-from parsing.loading import *
+from GithubGraphML.analysis.metrics import language_usage, classic_metrics, community_metrics
+from GithubGraphML.visualization.language import language_usage_distribution
+from GithubGraphML.parsing.loading import *
+from GithubGraphML.analysis.metrics import classic_metrics
+from GithubGraphML.parsing.loading import *
 
 import matplotlib.pyplot as plt
 import plotly.express as px

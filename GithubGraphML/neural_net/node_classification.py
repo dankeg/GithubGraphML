@@ -329,10 +329,13 @@ def main() -> None:
     data.train_mask, data.eval_mask = train_mask, eval_mask
 
     # Model training
+    start_time = time.time()
     model = GCNModel(in_dim=data.x.size(1), hidden_dim=16, out_dim=len(languages))
     history = train_model(model, data, train_mask)
     print(f"Training complete. Saving model to {MODEL_PATH}")
     save_model(model, MODEL_PATH)
+    end_time = time.time()
+    print(f"Training Time: {end_time - start_time}")
 
     # Model evaluation
     loaded_model = GCNModel(
